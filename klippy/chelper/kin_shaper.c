@@ -156,48 +156,6 @@ shaper_xy_calc_position(struct stepper_kinematics *sk, struct move *m
     return is->orig_sk->calc_position_cb(is->orig_sk, &is->m, DUMMY_T);
 }
 
-// A callback that forwards post_cb call to the original kinematics
-static void
-shaper_commanded_pos_post_fixup(struct stepper_kinematics *sk)
-{
-    struct input_shaper *is = container_of(sk, struct input_shaper, sk);
-    is->orig_sk->commanded_pos = sk->commanded_pos;
-    is->orig_sk->post_cb(is->orig_sk);
-    sk->commanded_pos = is->orig_sk->commanded_pos;
-}
-
-static void
-shaper_note_generation_time(struct input_shaper *is)
-{
-    double pre_active = 0., post_active = 0.;
-    if ((is->sk.active_flags & AF_X) && is->sx.num_pulses) {
-        pre_active = is->sx.pulses[is->sx.num_pulses-1].t;
-        post_active = -is->sx.pulses[0].t;
-    }
-    if ((is->sk.active_flags & AF_Y) && is->sy.num_pulses) {
-        pre_active = is->sy.pulses[is->sy.num_pulses-1].t > pre_active
-            ? is->sy.pulses[is->sy.num_pulses-1].t : pre_active;
-        post_active = -is->sy.pulses[0].t > post_active
-            ? -is->sy.pulses[0].t : post_active;
-    }
-    is->sk.gen_steps_pre_active = pre_active;
-    is->sk.gen_steps_post_active = post_active;
-}
-
-void __visible
-input_shaper_update_sk(struct stepper_kinematics *sk)
-{
-    struct input_shaper *is = container_of(sk, struct input_shaper, sk);
-    if ((is->orig_sk->active_flags & (AF_X | AF_Y)) == (AF_X | AF_Y))
-        is->sk.calc_position_cb = shaper_xy_calc_position;
-    else if (is->orig_sk->active_flags & AF_X)
-        is->sk.calc_position_cb = shaper_x_calc_position;
-    else if (is->orig_sk->active_flags & AF_Y)
-        is->sk.calc_position_cb = shaper_y_calc_position;
-    is->sk.active_flags = is->orig_sk->active_flags;
-    shaper_note_generation_time(is);
-}
-
 int __visible
 input_shaper_set_sk(struct stepper_kinematics *sk
                     , struct stepper_kinematics *orig_sk)
@@ -216,10 +174,25 @@ input_shaper_set_sk(struct stepper_kinematics *sk
     is->sk.commanded_pos = orig_sk->commanded_pos;
     is->sk.last_flush_time = orig_sk->last_flush_time;
     is->sk.last_move_time = orig_sk->last_move_time;
-    if (orig_sk->post_cb) {
-        is->sk.post_cb = shaper_commanded_pos_post_fixup;
-    }
     return 0;
+}
+
+static void
+shaper_note_generation_time(struct input_shaper *is)
+{
+    double pre_active = 0., post_active = 0.;
+    if ((is->sk.active_flags & AF_X) && is->sx.num_pulses) {
+        pre_active = is->sx.pulses[is->sx.num_pulses-1].t;
+        post_active = -is->sx.pulses[0].t;
+    }
+    if ((is->sk.active_flags & AF_Y) && is->sy.num_pulses) {
+        pre_active = is->sy.pulses[is->sy.num_pulses-1].t > pre_active
+            ? is->sy.pulses[is->sy.num_pulses-1].t : pre_active;
+        post_active = -is->sy.pulses[0].t > post_active
+            ? -is->sy.pulses[0].t : post_active;
+    }
+    is->sk.gen_steps_pre_active = pre_active;
+    is->sk.gen_steps_post_active = post_active;
 }
 
 int __visible
